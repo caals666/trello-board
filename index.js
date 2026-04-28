@@ -1,5 +1,7 @@
 const express = require("express");
 const jwt = require("jsonwebtoken");
+const {authMiddleware} = require("./middleware");
+const cookieParser = require('cookie-parser');
 
 let USERS_ID=1;
 let ORGANIZATIONS_ID=1;
@@ -7,38 +9,14 @@ let ISSUES_ID=1;
 let BOARD_ID=1;
 
 const USERS=[];
-const ORGANIZATIONS=[{
-    id:1,
-    title:"100xdevs",
-    description:"Learning coding platform",
-    admin:"1",
-    members:[2]
-},{
-    id: 2,
-    title: "ramans org",
-    description: "Experimenting",
-    admin: 1,
-    members: []
-}];
-const BOARDS = [{
-    id: 1,
-    title: "100xschool website (frontend",
-    organizationId: 1
-}];
-const ISSUES = [{
-    id: 1,
-    title: "Add dark mode",
-    boardId: 1,
-    state: "IN_PROGRESS"
-}, {
-    id: 2,
-    title: "Allow admins to create more courses",
-    boardId: 1,
-    state:"DONE"
-}];
+const ORGANIZATIONS=[];
+const BOARDS = [];
+const ISSUES = [];
 
 const app = express();
 app.use(express.json());
+app.use(cookieParser());
+ 
 app.post("/signup",(req,res)=>{
     const username=req.body.username;
     const password=req.body.password;
@@ -61,31 +39,153 @@ app.post("/signup",(req,res)=>{
     })
 })
 
-app.post("/signin",(req,res)=>{
-    const username=req.body.username;
-    const password=req.body.password;
+app.post("/signin", (req, res) => {
+    const username = req.body.username;
+    const password = req.body.password;
 
-    const userExists = USERS.find(u=>u.username===username);
-    if(!userExists){
+    const userExists = USERS.find(u => u.username === username);
+    if (!userExists) {
         res.status(403).json({
-            message:"User with this username does not exist"
-        })
+            message: "User with this username does not exist"
+        });
         return;
     }
-    let token=jwt.sign({
-        userId:userExists.id
-    },"sriram")
+    
+    let token = jwt.sign({
+        userId: userExists.id
+    }, "sriram");
+
+    res.cookie('authToken', token);
 
     res.json({
-        "token":token
+        "token": token
+    });
+});
+
+
+app.post("/organization",authMiddleware,(req,res)=>{
+    const userId = req.userId;
+    ORGANIZATIONS.push({
+        id:ORGANIZATIONS_ID++,
+        title:req.body.title,
+        description:req.body.description,
+        admin:userId,
+        members:[]
+    })
+    res.json({
+        message:"Org created",
+        id:ORGANIZATIONS_ID-1
     })
 })
 
-app.post("/organization",(req,res)=>{
+app.post("/add-member-to-organization",(req,res)=>{
+    const userId=req.userId;
+    const organizationId=req.body.organizationId;
+    const memberUsername=req.body.organizationId;
+
+    const organization = ORGANIZATIONS.find(o=>o.organizationId==organizationId);
+
+    if(!organization||organization.admin!==userId){
+        res.status(411).json({
+            message:"Either this org doesn't exist or you are not an admin of this org"
+        })
+        return;
+    }
+
+    const memberUser=USERS.find(u=>u.username===memberUsername);
+    
+    if(!memberUser){
+        res.status(411).json({
+            message:"No user with this useranme exists in our db"
+        })
+        return
+    }
+
+    organization.members.push(memberUser)
+
+    res.json({
+        message:"New member added!"
+    })
+})
+
+app.post("/board",(req,res)=>{
     
 })
 
-app.post("/add-member-to-organization",(req,res)=>{
+app.post("/issue",(req,res)=>{
 
+})
+
+app.get("/organization",authMiddleware,(req,res)=>{
+    const userId=req.userId;
+    const organizationId=req.query.organizationId;
+
+    const organization = ORGANIZATIONS.find(o=>o.organizationId==organizationId);
+
+    if(!organization||organization.admin!==userId){
+        res.status(411).json({
+            message:"Either this org doesn't exist or you are not an admin of this org"
+        })
+        return;
+    }
+
+    res.json({
+        organization:{
+            ...organization,
+            members: organization.members.map(memberId=>{
+                const user = USERS.find(users=>user.id===memberId);
+                return{
+                    id:user.id,
+                    username: user.username
+                }
+            })
+        }
+    })
+})
+
+app.get("/boards",(req,res)=>{
+
+})
+
+app.get("/issues",(req,res)=>{
+
+})
+
+app.get("/members",(req,res)=>{
+
+})
+
+app.put("/issues",(req,res)=>{
+
+})
+
+app.delete("/members",authMiddleware,(req,res)=>{
+    const userId=req.userId;
+    const organizationId=req.body.organizationId;
+    const memberUsername=req.body.organizationId;
+
+    const organization = ORGANIZATIONS.find(o=>o.organizationId==organizationId);
+
+    if(!organization||organization.admin!==userId){
+        res.status(411).json({
+            message:"Either this org doesn't exist or you are not an admin of this org"
+        })
+        return;
+    }
+
+    const memberUser=USERS.find(u=>u.username===memberUsername);
+    
+    if(!memberUser){
+        res.status(411).json({
+            message:"No user with this useranme exists in our db"
+        })
+        return
+    }
+
+    organization.members=organization.members.filter(u=>u.id!==memberUsername)
+
+    res.json({
+        message:"New member added!"
+    })
 })
 app.listen(3000);
