@@ -2,26 +2,29 @@ const express = require("express");
 const jwt = require("jsonwebtoken");
 const {authMiddleware} = require("./middleware");
 const cookieParser = require('cookie-parser');
+const {userModel, organizationModel} = require("./models.js")
 
-let USERS_ID=1;
-let ORGANIZATIONS_ID=1;
-let ISSUES_ID=1;
-let BOARD_ID=1;
+// let USERS_ID=1;
+// let ORGANIZATIONS_ID=1;
+// let ISSUES_ID=1;
+// let BOARD_ID=1;
 
-const USERS=[];
-const ORGANIZATIONS=[];
-const BOARDS = [];
-const ISSUES = [];
+// const USERS=[];
+// const ORGANIZATIONS=[];
+// const BOARDS = [];
+// const ISSUES = [];
 
 const app = express();
 app.use(express.json());
 app.use(cookieParser());
  
-app.post("/signup",(req,res)=>{
+app.post("/signup",async (req,res)=>{
     const username=req.body.username;
     const password=req.body.password;
 
-    const userExists = USERS.find(u=>u.username===username);
+    const userExists = await userModel.findOne({
+        username:username
+    })
     if(userExists){
         res.status(411).json({
             message:"User with this username already exists"
@@ -29,21 +32,23 @@ app.post("/signup",(req,res)=>{
         return;
     }
 
-    USERS.push({
-        username,
-        password,
-        id:USERS_ID++
-    })
+    const newUser = await userModel.create({
+        username:username,
+        password:password
+    });
     res.json({
+        id:mongoose,
         message:"You have signed up successfully"
     })
 })
 
-app.post("/signin", (req, res) => {
+app.post("/signin",async (req, res) => {
     const username = req.body.username;
     const password = req.body.password;
 
-    const userExists = USERS.find(u => u.username === username);
+    const userExists = await userModel.findOne({
+        username:username
+    });
     if (!userExists) {
         res.status(403).json({
             message: "User with this username does not exist"
@@ -52,7 +57,7 @@ app.post("/signin", (req, res) => {
     }
     
     let token = jwt.sign({
-        userId: userExists.id
+        userId: userExists._id
     }, "sriram");
 
     res.cookie('authToken', token);
@@ -63,10 +68,9 @@ app.post("/signin", (req, res) => {
 });
 
 
-app.post("/organization",authMiddleware,(req,res)=>{
+app.post("/organization",authMiddleware,async (req,res)=>{
     const userId = req.userId;
-    ORGANIZATIONS.push({
-        id:ORGANIZATIONS_ID++,
+    const orgCreate=await organizationModel.create({
         title:req.body.title,
         description:req.body.description,
         admin:userId,
@@ -74,25 +78,29 @@ app.post("/organization",authMiddleware,(req,res)=>{
     })
     res.json({
         message:"Org created",
-        id:ORGANIZATIONS_ID-1
+        id:orgCreate._id
     })
 })
 
-app.post("/add-member-to-organization",(req,res)=>{
+app.post("/add-member-to-organization",authMiddleware,async (req,res)=>{
     const userId=req.userId;
-    const organizationId=req.body.organizationId;
-    const memberUsername=req.body.organizationId;
+    const orgName=req.body.orgName;
+    const memberUsername=req.body.memberUsername;
 
-    const organization = ORGANIZATIONS.find(o=>o.organizationId==organizationId);
+    const organization = await organizationModel.findOne({
+        title:orgName
+    });
 
-    if(!organization||organization.admin!==userId){
+    if(!organization||organization.admin.toString()!==userId){
         res.status(411).json({
             message:"Either this org doesn't exist or you are not an admin of this org"
         })
         return;
     }
 
-    const memberUser=USERS.find(u=>u.username===memberUsername);
+    const memberUser=await userModel.findOne({
+        username:memberUsername
+    });
     
     if(!memberUser){
         res.status(411).json({
@@ -100,15 +108,20 @@ app.post("/add-member-to-organization",(req,res)=>{
         })
         return
     }
-
-    organization.members.push(memberUser)
+    await organizationModel.updateOne({
+        title: orgName
+    }, {
+        "$push": {
+            members: memberUser._id
+        }
+    });
 
     res.json({
         message:"New member added!"
     })
 })
 
-app.post("/board",(req,res)=>{
+app.post("/board",authMiddleware,(req,res)=>{
     
 })
 
@@ -116,13 +129,15 @@ app.post("/issue",(req,res)=>{
 
 })
 
-app.get("/organization",authMiddleware,(req,res)=>{
+app.get("/organization",authMiddleware,async (req,res)=>{
     const userId=req.userId;
     const organizationId=req.query.organizationId;
 
-    const organization = ORGANIZATIONS.find(o=>o.organizationId==organizationId);
+    const organization = await organizationModel.findOne({
+        _id:organizationId
+    });
 
-    if(!organization||organization.admin!==userId){
+    if(!organization||organization.admin.tostring()!==userId){
         res.status(411).json({
             message:"Either this org doesn't exist or you are not an admin of this org"
         })
@@ -130,16 +145,7 @@ app.get("/organization",authMiddleware,(req,res)=>{
     }
 
     res.json({
-        organization:{
-            ...organization,
-            members: organization.members.map(memberId=>{
-                const user = USERS.find(users=>user.id===memberId);
-                return{
-                    id:user.id,
-                    username: user.username
-                }
-            })
-        }
+        organization:organization
     })
 })
 
@@ -159,21 +165,25 @@ app.put("/issues",(req,res)=>{
 
 })
 
-app.delete("/members",authMiddleware,(req,res)=>{
+app.delete("/members",authMiddleware,async (req,res)=>{
     const userId=req.userId;
-    const organizationId=req.body.organizationId;
-    const memberUsername=req.body.organizationId;
+    const orgName=req.body.orgName;
+    const memberUsername=req.body.memberUsername;
 
-    const organization = ORGANIZATIONS.find(o=>o.organizationId==organizationId);
+    const organization = await organizationModel.findOne({
+        title:orgName
+    });
 
-    if(!organization||organization.admin!==userId){
+    if(!organization||organization.admin.toString()!==userId){
         res.status(411).json({
             message:"Either this org doesn't exist or you are not an admin of this org"
         })
         return;
     }
 
-    const memberUser=USERS.find(u=>u.username===memberUsername);
+    const memberUser=await userModel.findOne({
+        username:memberUsername
+    });
     
     if(!memberUser){
         res.status(411).json({
@@ -182,10 +192,13 @@ app.delete("/members",authMiddleware,(req,res)=>{
         return
     }
 
-    organization.members=organization.members.filter(u=>u.id!==memberUsername)
+    await organizationModel.updateOne(
+        {title:orgName},
+        {"$pull":{members:memberUser._id}}
+    )
 
     res.json({
-        message:"New member added!"
+        message:"Member removed!"
     })
 })
 app.listen(3000);
