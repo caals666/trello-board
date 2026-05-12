@@ -131,21 +131,31 @@ app.post("/issue",(req,res)=>{
 
 app.get("/organization",authMiddleware,async (req,res)=>{
     const userId=req.userId;
-    const organizationId=req.query.organizationId;
+    const orgName=req.body.orgName;
 
     const organization = await organizationModel.findOne({
-        _id:organizationId
+        title:orgName
     });
 
-    if(!organization||organization.admin.tostring()!==userId){
+    if(!organization||organization.admin.toString()!==userId){
         res.status(411).json({
             message:"Either this org doesn't exist or you are not an admin of this org"
         })
         return;
     }
 
+    const members = await userModel.find({
+        _id:organization.members
+    },{
+
+    })
+
     res.json({
-        organization:organization
+        organization:{
+            title:organization.title,
+            description:organization.description,
+            members
+        }
     })
 })
 
